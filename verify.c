@@ -35,8 +35,11 @@ void fill_pattern(struct thread_data *td, void *p, unsigned int len, struct io_u
 		dprint(FD_VERIFY, "fill random bytes len=%u\n", len);
 		if (use_seed)
 			__fill_random_buf(p, len, seed);
-		else
-			io_u->rand_seed = fill_random_buf(&td->buf_state, p, len);
+		else {
+			struct frand_state buf_state;
+			get_rand_buf_state(td, &buf_state);
+			io_u->rand_seed = fill_random_buf(&buf_state, p, len);
+		}
 		break;
 	case 1:
 		if (io_u->buf_filled_len >= len) {

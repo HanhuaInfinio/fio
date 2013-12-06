@@ -216,6 +216,91 @@ static int str_bssplit_cb(void *data, const char *input)
 	return ret;
 }
 
+static int str_cidsplit_cb(void *data, const char *input)
+{
+	struct thread_options *o = &((struct thread_data *)data)->o;
+	struct cidsplit *cidsplit;
+	char *str, *p, *fname, *weight_str, *last_str;
+        long long total;
+	int i, ret = 0;
+
+	if (parse_dryrun())
+		return 0;
+	p = str = strdup(input);
+	strip_blank_front(&str);
+	strip_blank_end(str);
+
+	o->cidsplit_nr = 4;
+	cidsplit = malloc(o->cidsplit_nr * sizeof(struct cidsplit));
+
+	i = 0;
+	while ((fname = strsep(&str, ":")) != NULL) {
+		long long first, last, weight;
+
+		if (!strlen(fname))
+			break;
+
+		/* grow struct buffer, if needed */
+		if (i == o->cidsplit_nr) {
+			o->cidsplit_nr <<= 1;
+			cidsplit = realloc(cidsplit, o->cidsplit_nr
+					  * sizeof(struct cidsplit));
+		}
+
+		weight_str = strstr(fname, "/");
+		if (weight_str) {
+			*weight_str = '\0';
+			weight_str++;
+			weight = atoi(weight_str);
+		} else
+			weight = -1;
+
+		last_str = strstr(fname, "-");
+		if (last_str) {
+			*last_str = '\0';
+			last_str++;
+			if (str_to_decimal(last_str, &last, 1, o)) {
+				log_err("fio: cidsplit conversion failed\n");
+				free(cidsplit);
+				return 1;
+			}
+		} else
+			weight = -1;
+		
+
+		if (str_to_decimal(fname, &first, 1, o)) {
+			log_err("fio: cidsplit conversion failed\n");
+			free(cidsplit);
+			return 1;
+		}
+	
+		if (last < first) {
+			log_err("fio: cidsplit invalid range\n");
+			free(cidsplit);
+			return 1; 
+		}
+
+		cidsplit[i].first = (uint32_t) first;
+		cidsplit[i].count = (uint32_t) (last - first + 1);
+		cidsplit[i].weight = (uint32_t) weight;
+	}
+
+	o->cidsplit_nr = i;
+
+	/* Now fixing up the weight */
+	total = 0;
+	for (i = 0; i < o->cidsplit_nr; i++)
+		total += (long long) o->cidsplit[i].weight;
+	for (i = 0; i < o->cidsplit_nr; i++) {
+		o->cidsplit[i].weight = (uint32_t) (
+			(long long) (o->cidsplit[i].weight << CSSPLIT_WEIGHT_BITS)
+			/ total );
+	}
+
+	free(p);
+	return ret;
+}
+
 static int str2error(char *str)
 {
 	const char *err[] = { "EPERM", "ENOENT", "ESRCH", "EINTR", "EIO",
@@ -1587,6 +1672,17 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.category = FIO_OPT_C_IO,
 		.group	= FIO_OPT_G_INVALID,
 	},
+	{
+		.name	= "cidsplit",
+		.lname	= "Content seed split",
+		.type	= FIO_OPT_STR,
+		.cb	= str_cidsplit_cb,
+		.help	= "Set a specific mix of seed for random buffer content",
+		.parent = "rw",
+		.hide	= 1,
+		.category = FIO_OPT_C_IO,
+		.group	= FIO_OPT_G_INVALID,
+	}, 
 	{
 		.name	= "bs_unaligned",
 		.lname	= "Block size unaligned",

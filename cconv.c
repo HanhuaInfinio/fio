@@ -60,6 +60,16 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->file_size_high = le64_to_cpu(top->file_size_high);
 	o->start_offset = le64_to_cpu(top->start_offset);
 
+	o->cidsplit_nr = le32_to_cpu(top->cidsplit_nr);
+	if (o->cidsplit_nr) {
+		o->cidsplit = malloc(o->cidsplit_nr * sizeof(struct cidsplit));
+		for (j=0; j < o->cidsplit_nr; j++) {
+			o->cidsplit[j].first = le32_to_cpu(top->cidsplit[j].first);
+			o->cidsplit[j].count = le32_to_cpu(top->cidsplit[j].count);
+			o->cidsplit[j].weight = le32_to_cpu(top->cidsplit[j].weight);
+		}
+	}
+
 	for (i = 0; i < DDIR_RWDIR_CNT; i++) {
 		o->bs[i] = le32_to_cpu(top->bs[i]);
 		o->ba[i] = le32_to_cpu(top->ba[i]);
@@ -350,6 +360,20 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	top->sync_file_range = cpu_to_le32(o->sync_file_range);
 	top->compress_percentage = cpu_to_le32(o->compress_percentage);
 	top->compress_chunk = cpu_to_le32(o->compress_chunk);
+
+	top->cidsplit_nr = cpu_to_le32(o->cidsplit_nr);
+	if (o->cidsplit_nr) {
+		unsigned int cidsplit_nr = o->cidsplit_nr;
+		if (cidsplit_nr > CSSPLIT_MAX) {
+			log_err("fio: CSSPLIT_MAX is too small\n");
+			cidsplit_nr = CSSPLIT_MAX;
+		}
+		for (j = 0; j < cidsplit_nr; j++) {
+			top->cidsplit[j].first = cpu_to_le32(o->cidsplit[j].first);
+			top->cidsplit[j].count = cpu_to_le32(o->cidsplit[j].count);
+			top->cidsplit[j].weight = cpu_to_le32(o->cidsplit[j].weight);
+		}
+	}
 
 	for (i = 0; i < DDIR_RWDIR_CNT; i++) {
 		top->bs[i] = cpu_to_le32(o->bs[i]);

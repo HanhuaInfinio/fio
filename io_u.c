@@ -1637,11 +1637,39 @@ void io_u_queued(struct thread_data *td, struct io_u *io_u)
 	}
 }
 
+/*
+ * 
+ */
+void get_rand_buf_state(struct thread_data *td, struct frand_state *buf_state)
+{
+	int j;
+	if (td->o.cidsplit_nr) {
+		/* Use td->buf_state as the seed to generate a buf_state */
+		unsigned int r = __rand(&td->buf_state)
+				 & ((1u << CSSPLIT_WEIGHT_BITS) - 1);
+		unsigned int seed = 0;
+		for (j = 0; j < td->o.cidsplit_nr; j++) {
+			struct cidsplit *split = td->o.cidsplit + j;
+			if (r < (unsigned int) split->weight) {
+				seed = __rand(&td->buf_state) % split->count
+				       + (unsigned int) split->first;
+				break;
+			}
+			r -= split->weight;
+		}
+		init_rand_seed(buf_state, seed);
+	} else
+		memcpy(buf_state, &td->buf_state, sizeof(struct frand_state));
+}
+
 void fill_io_buffer(struct thread_data *td, void *buf, unsigned int min_write,
 		    unsigned int max_bs)
 {
 	if (!td->o.zero_buffers) {
 		unsigned int perc = td->o.compress_percentage;
+
+		struct frand_state buf_state;
+		get_rand_buf_state(td, &buf_state);
 
 		if (perc) {
 			unsigned int seg = min_write;
@@ -1650,10 +1678,10 @@ void fill_io_buffer(struct thread_data *td, void *buf, unsigned int min_write,
 			if (!seg)
 				seg = min_write;
 
-			fill_random_buf_percentage(&td->buf_state, buf,
+			fill_random_buf_percentage(&buf_state, buf,
 						perc, seg, max_bs);
 		} else
-			fill_random_buf(&td->buf_state, buf, max_bs);
+			fill_random_buf(&buf_state, buf, max_bs);
 	} else
 		memset(buf, 0, max_bs);
 }

@@ -374,6 +374,22 @@ splits to reads and writes. The format is identical to what the
 \fBbs\fR option accepts, the read and write parts are separated with a
 comma.
 .TP
+.BI cssplit \fR=\fPstr
+This option allow users to fine control the content of the generated
+random blocks by specifying a list of content ids and frequency weights.
+With a fixed size, each abstract content id uniquely the content.
+The content id functions as the seed of random number generator.
+The format of the options is cssplit=firstid-lastid/weight, optionally
+adding as many definitions as needed separated by a colon.
+The lastid and the weight can be omitted (along with the preceding
+separating '-' and '/', respectively). The default weight is one.
+Note that weight is not interpreted as percentage and it is not necessary
+for them to sum to 100.
+Example: cssplit=1-10/50:11-20/10:21-100 means each of the first 10
+content ids has a frequency weight 50, each of the second 10 ids has 
+a weight 10, and each of the rest 80 ids has a weigtht of one. 
+chance to choose from one of the first 10 content ids
+.TP
 .B blocksize_unaligned\fR,\fP bs_unaligned
 If set, any size in \fBblocksize_range\fR may be used.  This typically won't
 work with direct I/O, as that normally requires sector alignment.

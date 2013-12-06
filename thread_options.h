@@ -23,9 +23,18 @@ enum fio_memtype {
 
 #define BSSPLIT_MAX	64
 
+#define CSSPLIT_MAX	64
+
 struct bssplit {
 	uint32_t bs;
 	uint32_t perc;
+};
+
+/* Content seed split */
+struct cidsplit {
+	uint32_t first;
+	uint32_t count;
+	uint32_t weight;
 };
 
 struct thread_options {
@@ -62,6 +71,9 @@ struct thread_options {
 	unsigned int max_bs[DDIR_RWDIR_CNT];
 	struct bssplit *bssplit[DDIR_RWDIR_CNT];
 	unsigned int bssplit_nr[DDIR_RWDIR_CNT];
+
+        struct cidsplit *cidsplit;
+        unsigned int cidsplit_nr;
 
 	int *ignore_error[ERROR_TYPE_CNT];
 	unsigned int ignore_error_nr[ERROR_TYPE_CNT];
@@ -277,6 +289,9 @@ struct thread_options_pack {
 	uint32_t max_bs[DDIR_RWDIR_CNT];
 	struct bssplit bssplit[DDIR_RWDIR_CNT][BSSPLIT_MAX];
 	uint32_t bssplit_nr[DDIR_RWDIR_CNT];
+
+	struct cidsplit cidsplit[CSSPLIT_MAX];
+	uint32_t cidsplit_nr;
 
 	uint32_t ignore_error[ERROR_TYPE_CNT][ERROR_STR_MAX];
 	uint32_t ignore_error_nr[ERROR_TYPE_CNT];
