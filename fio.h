@@ -220,6 +220,8 @@ struct thread_data {
 	unsigned long rate_blocks[DDIR_RWDIR_CNT];
 	struct timeval lastrate[DDIR_RWDIR_CNT];
 
+        unsigned int shed_count[DDIR_RWDIR_CNT];
+
 	uint64_t total_io_size;
 	uint64_t fill_device_size;
 
@@ -522,6 +524,18 @@ static inline int __should_check_rate(struct thread_data *td,
 	    o->rate_iops_min[ddir])
 		return 1;
 
+	return 0;
+}
+
+static inline int __should_check_latency(struct thread_data *td,
+					 enum fio_ddir ddir)
+{
+	struct thread_options *o = &td->o;
+	/*
+	 * If load shed latency theshold is given, we need to check it
+	 */
+	if (o->shed_latency[ddir])
+		return 1;
 	return 0;
 }
 

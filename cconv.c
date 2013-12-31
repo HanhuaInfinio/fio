@@ -90,6 +90,7 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 		o->ratemin[i] = le32_to_cpu(top->ratemin[i]);
 		o->rate_iops[i] = le32_to_cpu(top->rate_iops[i]);
 		o->rate_iops_min[i] = le32_to_cpu(top->rate_iops_min[i]);
+		o->shed_latency[i] = le32_to_cpu(top->shed_latency[i]);
 
 		o->perc_rand[i] = le32_to_cpu(top->perc_rand[i]);
 	}
@@ -400,6 +401,7 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 		top->ratemin[i] = cpu_to_le32(o->ratemin[i]);
 		top->rate_iops[i] = cpu_to_le32(o->rate_iops[i]);
 		top->rate_iops_min[i] = cpu_to_le32(o->rate_iops_min[i]);
+		top->shed_latency[i] = cpu_to_le32(o->shed_latency[i]);
 
 		top->perc_rand[i] = cpu_to_le32(o->perc_rand[i]);
 	}

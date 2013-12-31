@@ -784,6 +784,17 @@ milliseconds.  Default: 1000ms.
 If set, fio will exit the job if it exceeds this maximum latency. It will exit
 with an ETIME error.
 .TP
+.BI shed_latency \fR=\fPint
+If the latency exceeds this threshold latency (in usec), delays will be inserted
+before the next operation so as to simulate shedding the load.
+For the amount of delay to insert, a linear-increase logarithmic-decrease rule
+is followed: if the last latency is more than \fBshed_latency\fR, the delay is
+increased from the previous delay by the amount equal to the last latency;
+otherwise, the delay is decreased by the amount proportional to the logarithm
+of the previous delay.
+Note: reads and writes are handled separately; you can specify the thresholds
+for reads and writes separately. For the format, see \fBrate\fR.
+.TP
 .BI cpumask \fR=\fPint
 Set CPU affinity for this job. \fIint\fR is a bitmask of allowed CPUs the job
 may run on.  See \fBsched_setaffinity\fR\|(2).

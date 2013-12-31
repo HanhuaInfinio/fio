@@ -12,6 +12,9 @@
 #include "lib/rand.h"
 #include "lib/axmap.h"
 
+#define MAX_SHED_COUNT 4096
+#define SHED_FRAC_BITS 4
+
 struct io_completion_data {
 	int nr;				/* input */
 
@@ -1428,6 +1431,16 @@ static long long usec_for_io(struct thread_data *td, enum fio_ddir ddir)
 	return remainder * 1000000 / bps + secs * 1000000;
 }
 
+static unsigned int get_used_bits(unsigned long x)
+{
+	unsigned int r = 0;
+	while (x) {
+		x >>= 1;
+		r++;
+	}
+	return r;
+}
+
 static void io_completed(struct thread_data *td, struct io_u *io_u,
 			 struct io_completion_data *icd)
 {
@@ -1487,6 +1500,27 @@ static void io_completed(struct thread_data *td, struct io_u *io_u,
 					(usec_for_io(td, idx) -
 					 utime_since_now(&td->start));
 			}
+
+			if (__should_check_latency(td, idx)) {
+				unsigned long lusec = utime_since(
+					&io_u->issue_time, &icd->time);
+				/* Linear increase and logarithmic decrease */
+				if (lusec > td->o.shed_latency[idx]) {
+					if (td->shed_count[idx] < MAX_SHED_COUNT ) {
+						td->shed_count[idx] += (1<<SHED_FRAC_BITS);
+					}
+				}
+				else if (td->shed_count[idx]) {
+					td->shed_count[idx] -= get_used_bits(td->shed_count[idx]);
+				}
+				if (td->shed_count[idx]) {
+					lusec = (lusec * td->shed_count[idx]) >> SHED_FRAC_BITS;
+					if (lusec > td->rate_pending_usleep[idx]) {
+						td->rate_pending_usleep[idx] = lusec;
+					}
+				}
+			}
+
 			if (idx != DDIR_TRIM && __should_check_rate(td, odx))
 				td->rate_pending_usleep[odx] =
 					(usec_for_io(td, odx) -

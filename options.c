@@ -2722,6 +2722,18 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.group = FIO_OPT_G_RATE,
 	},
 	{
+		.name   = "shed_latency",
+		.lname  = "I/O shedding latency",
+		.type	= FIO_OPT_INT,
+		.off1	= td_var_offset(shed_latency[DDIR_READ]),
+		.off2   = td_var_offset(shed_latency[DDIR_WRITE]),
+		.off3   = td_var_offset(shed_latency[DDIR_TRIM]),
+		.help   = "Threshold latency for load shedding (usec)",
+                .hide   = 1,
+		.category = FIO_OPT_C_IO,
+		.group  = FIO_OPT_G_RATE,
+	},
+	{
 		.name	= "invalidate",
 		.lname	= "Cache invalidate",
 		.type	= FIO_OPT_BOOL,

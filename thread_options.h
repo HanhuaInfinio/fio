@@ -220,6 +220,8 @@ struct thread_options {
 	unsigned int ratecycle;
 	unsigned int rate_iops[DDIR_RWDIR_CNT];
 	unsigned int rate_iops_min[DDIR_RWDIR_CNT];
+        /* Reduce load (shedding) of latency is greater than this */
+        unsigned int shed_latency[DDIR_RWDIR_CNT];
 
 	char *ioscheduler;
 
@@ -429,6 +431,7 @@ struct thread_options_pack {
 	uint32_t ratecycle;
 	uint32_t rate_iops[DDIR_RWDIR_CNT];
 	uint32_t rate_iops_min[DDIR_RWDIR_CNT];
+	uint32_t shed_latency[DDIR_RWDIR_CNT];
 
 	uint8_t ioscheduler[FIO_TOP_STR_MAX];
 
