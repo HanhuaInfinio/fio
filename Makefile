@@ -108,6 +108,10 @@ ifeq ($(CONFIG_TARGET_OS), FreeBSD)
   LIBS	 += -lpthread -lrt
   LDFLAGS += -rdynamic
 endif
+ifeq ($(CONFIG_TARGET_OS), OpenBSD)
+  LIBS	 += -lpthread
+  LDFLAGS += -rdynamic
+endif
 ifeq ($(CONFIG_TARGET_OS), NetBSD)
   LIBS	 += -lpthread -lrt
   LDFLAGS += -rdynamic
@@ -128,7 +132,7 @@ ifneq (,$(findstring CYGWIN,$(CONFIG_TARGET_OS)))
   SOURCE := $(filter-out engines/mmap.c,$(SOURCE))
   SOURCE += os/windows/posix.c
   LIBS	 += -lpthread -lpsapi -lws2_32
-  CFLAGS += -DPSAPI_VERSION=1 -Ios/windows/posix/include -Wno-format
+  CFLAGS += -DPSAPI_VERSION=1 -Ios/windows/posix/include -Wno-format -static
 endif
 
 OBJS = $(SOURCE:.c=.o)

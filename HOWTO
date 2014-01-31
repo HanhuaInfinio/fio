@@ -384,6 +384,11 @@ unified_rw_reporting=bool	Fio normally reports statistics on a per
 randrepeat=bool	For random IO workloads, seed the generator in a predictable
 		way so that results are repeatable across repetitions.
 
+randseed=int	Seed the random number generators based on this seed value, to
+		be able to control what sequence of output is being generated.
+		If not set, the random sequence depends on the randrepeat
+		setting.
+
 use_os_rand=bool Fio can either use the random generator supplied by the OS
 		to generator random offsets, or it can use it's own internal
 		generator (based on Tausworthe). Default is to use the
@@ -541,6 +546,11 @@ buffer_compress_chunk=int	See buffer_compress_percentage. This
 		to some chunk size smaller than the block size, fio can
 		alternate random and zeroed data throughout the IO
 		buffer.
+
+buffer_pattern=str	If set, fio will fill the io buffers with this pattern.
+		If not set, the contents of io buffers is defined by the other
+		options related to buffer contents. The setting can be any
+		pattern of bytes, and can be prefixed with 0x for hex values.
 
 nrfiles=int	Number of files to use for this job. Defaults to 1.
 
@@ -881,6 +891,20 @@ rate_iops_min=int If fio doesn't meet this rate of IO, it will cause
 		the job to exit. The same format as rate is used for read vs
 		write separation.
 
+latency_target=int	If set, fio will attempt to find the max performance
+		point that the given workload will run at while maintaining a
+		latency below this target. The values is given in microseconds.
+		See latency_window and latency_percentile
+
+latency_window=int	Used with latency_target to specify the sample window
+		that the job is run at varying queue depths to test the
+		performance. The value is given in microseconds.
+
+latency_percentile=float	The percentage of IOs that must fall within the
+		criteria specified by latency_target and latency_window. If not
+		set, this defaults to 100.0, meaning that all IOs must be equal
+		or below to the value set by latency_target.
+
 max_latency=int	If set, fio will exit the job if it exceeds this maximum
 		latency. It will exit with an ETIME error.
 
@@ -1044,6 +1068,13 @@ loops=int	Run the specified number of iterations of this job. Used
 		to repeat the same workload a given number of times. Defaults
 		to 1.
 
+verify_only	Do not perform specified workload---only verify data still
+		matches previous invocation of this workload. This option
+		allows one to check data multiple times at a later date
+		without overwriting it. This option makes sense only for
+		workloads that write data, and does not support workloads
+		with the time_based option set.
+
 do_verify=bool	Run the verify phase after a write phase. Only makes sense if
 		verify is set. Defaults to 1.
 
@@ -1082,7 +1113,9 @@ verify=str	If writing to a file, fio can verify the file contents
 
 			meta	Write extra information about each io
 				(timestamp, block number etc.). The block
-				number is verified. See also verify_pattern.
+				number is verified. The io sequence number is
+				verified for workloads that write data.
+				See also verify_pattern.
 
 			null	Only pretend to verify. Useful for testing
 				internals with ioengine=null, not for much
@@ -1472,7 +1505,9 @@ that defines them is selected.
 [net] proto=str	The network protocol to use. Accepted values are:
 
 			tcp	Transmission control protocol
+			tcpv6	Transmission control protocol V6
 			udp	User datagram protocol
+			udpv6	User datagram protocol V6
 			unix	UNIX domain socket
 
 		When the protocol is TCP or UDP, the port must also be given,

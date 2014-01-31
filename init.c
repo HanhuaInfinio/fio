@@ -635,6 +635,12 @@ static int fixup_options(struct thread_data *td)
 	if (td->o.oatomic)
 		td->o.odirect = 1;
 
+	/*
+	 * If randseed is set, that overrides randrepeat
+	 */
+	if (td->o.rand_seed)
+		td->o.rand_repeatable = 0;
+
 	return ret;
 }
 
@@ -830,10 +836,15 @@ static int setup_random_seeds(struct thread_data *td)
 	unsigned long seed;
 	unsigned int i;
 
-	if (!td->o.rand_repeatable)
+	if (!td->o.rand_repeatable && !td->o.rand_seed)
 		return init_random_state(td, td->rand_seeds, sizeof(td->rand_seeds));
 
-	for (seed = 0x89, i = 0; i < 4; i++)
+	if (!td->o.rand_seed)
+		seed = 0x89;
+	else
+		seed = td->o.rand_seed;
+
+	for (i = 0; i < 4; i++)
 		seed *= 0x9e370001UL;
 
 	for (i = 0; i < FIO_RAND_NR_OFFS; i++) {
@@ -1382,7 +1393,7 @@ static void usage(const char *name)
 	printf("%s [options] [job options] <job file(s)>\n", name);
 	printf("  --debug=options\tEnable debug logging. May be one/more of:\n"
 		"\t\t\tprocess,file,io,mem,blktrace,verify,random,parse,\n"
-		"\t\t\tdiskutil,job,mutex,profile,time,net\n");
+		"\t\t\tdiskutil,job,mutex,profile,time,net,rate\n");
 	printf("  --parse-only\t\tParse options only, don't start any IO\n");
 	printf("  --output\t\tWrite output to file\n");
 	printf("  --runtime\t\tRuntime in seconds\n");
@@ -1421,7 +1432,8 @@ static void usage(const char *name)
 		"\t\t\t(option=system,percpu) or run unit work\n"
 		"\t\t\tcalibration only (option=calibrate)\n");
 	printf("\nFio was written by Jens Axboe <jens.axboe@oracle.com>");
-	printf("\n                   Jens Axboe <jaxboe@fusionio.com>\n");
+	printf("\n                   Jens Axboe <jaxboe@fusionio.com>");
+	printf("\n                   Jens Axboe <axboe@fb.com>\n");
 }
 
 #ifdef FIO_INC_DEBUG
@@ -1481,6 +1493,10 @@ struct debug_level debug_levels[] = {
 	{ .name = "net",
 	  .help = "Network logging",
 	  .shift = FD_NET,
+	},
+	{ .name = "rate",
+	  .help = "Rate logging",
+	  .shift = FD_RATE,
 	},
 	{ .name = NULL, },
 };

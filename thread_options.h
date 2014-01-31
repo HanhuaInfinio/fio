@@ -112,6 +112,7 @@ struct thread_options {
 	unsigned int do_disk_util;
 	unsigned int override_sync;
 	unsigned int rand_repeatable;
+	unsigned long long rand_seed;
 	unsigned int use_os_rand;
 	unsigned int log_avg_msec;
 	unsigned int norandommap;
@@ -119,6 +120,8 @@ struct thread_options {
 	unsigned int bs_unaligned;
 	unsigned int fsync_on_close;
 	unsigned int bs_is_seq_rand;
+
+	unsigned int verify_only;
 
 	unsigned int random_distribution;
 
@@ -181,6 +184,8 @@ struct thread_options {
 	unsigned int zero_buffers;
 	unsigned int refill_buffers;
 	unsigned int scramble_buffers;
+	char buffer_pattern[MAX_PATTERN_SIZE];
+	unsigned int buffer_pattern_bytes;
 	unsigned int compress_percentage;
 	unsigned int compress_chunk;
 	unsigned int time_based;
@@ -254,6 +259,10 @@ struct thread_options {
 	unsigned long long number_ios;
 
 	unsigned int sync_file_range;
+
+	unsigned long long latency_target;
+	unsigned long long latency_window;
+	fio_fp64_t latency_percentile;
 };
 
 #define FIO_TOP_STR_MAX		256
@@ -332,6 +341,7 @@ struct thread_options_pack {
 	uint32_t do_disk_util;
 	uint32_t override_sync;
 	uint32_t rand_repeatable;
+	uint64_t rand_seed;
 	uint32_t use_os_rand;
 	uint32_t log_avg_msec;
 	uint32_t norandommap;
@@ -392,6 +402,8 @@ struct thread_options_pack {
 	uint32_t zero_buffers;
 	uint32_t refill_buffers;
 	uint32_t scramble_buffers;
+	uint8_t buffer_pattern[MAX_PATTERN_SIZE];
+	uint32_t buffer_pattern_bytes;
 	unsigned int compress_percentage;
 	unsigned int compress_chunk;
 	uint32_t time_based;
@@ -464,6 +476,10 @@ struct thread_options_pack {
 	uint64_t number_ios;
 
 	uint32_t sync_file_range;
+
+	uint64_t latency_target;
+	uint64_t latency_window;
+	fio_fp64_t latency_percentile;
 } __attribute__((packed));
 
 extern void convert_thread_options_to_cpu(struct thread_options *o, struct thread_options_pack *top);

@@ -919,11 +919,12 @@ static int str_opendir_cb(void *data, const char fio_unused *str)
 	return add_dir_files(td, td->o.opendir);
 }
 
-static int str_verify_pattern_cb(void *data, const char *input)
+static int pattern_cb(char *pattern, unsigned int max_size,
+		      const char *input, unsigned int *pattern_bytes)
 {
-	struct thread_data *td = data;
 	long off;
-	int i = 0, j = 0, len, k, base = 10, pattern_length;
+	int i = 0, j = 0, len, k, base = 10;
+	uint32_t pattern_length;
 	char *loc1, *loc2;
 
 	loc1 = strstr(input, "0x");
@@ -933,7 +934,7 @@ static int str_verify_pattern_cb(void *data, const char *input)
 	off = strtol(input, NULL, base);
 	if (off != LONG_MAX || errno != ERANGE) {
 		while (off) {
-			td->o.verify_pattern[i] = off & 0xff;
+			pattern[i] = off & 0xff;
 			off >>= 8;
 			i++;
 		}
@@ -947,13 +948,13 @@ static int str_verify_pattern_cb(void *data, const char *input)
 				j = loc2 - input + 2;
 		} else
 			return 1;
-		if (len - j < MAX_PATTERN_SIZE * 2) {
+		if (len - j < max_size * 2) {
 			while (k >= j) {
 				off = converthexchartoint(input[k--]);
 				if (k >= j)
 					off += (converthexchartoint(input[k--])
 						* 16);
-				td->o.verify_pattern[i++] = (char) off;
+				pattern[i++] = (char) off;
 			}
 		}
 	}
@@ -963,19 +964,19 @@ static int str_verify_pattern_cb(void *data, const char *input)
 	 * the number of memcpy's we have to do when verifying the IO.
 	 */
 	pattern_length = i;
-	while (i > 1 && i * 2 <= MAX_PATTERN_SIZE) {
-		memcpy(&td->o.verify_pattern[i], &td->o.verify_pattern[0], i);
+	while (i > 1 && i * 2 <= max_size) {
+		memcpy(&pattern[i], &pattern[0], i);
 		i *= 2;
 	}
 
 	/*
 	 * Fill remainder, if the pattern multiple ends up not being
-	 * MAX_PATTERN_SIZE.
+	 * max_size.
 	 */
-	while (i > 1 && i < MAX_PATTERN_SIZE) {
-		unsigned int b = min(pattern_length, MAX_PATTERN_SIZE - i);
+	while (i > 1 && i < max_size) {
+		unsigned int b = min(pattern_length, max_size - i);
 
-		memcpy(&td->o.verify_pattern[i], &td->o.verify_pattern[0], b);
+		memcpy(&pattern[i], &pattern[0], b);
 		i += b;
 	}
 
@@ -984,19 +985,45 @@ static int str_verify_pattern_cb(void *data, const char *input)
 		 * The code in verify_io_u_pattern assumes a single byte pattern
 		 * fills the whole verify pattern buffer.
 		 */
-		memset(td->o.verify_pattern, td->o.verify_pattern[0],
-		       MAX_PATTERN_SIZE);
+		memset(pattern, pattern[0], max_size);
 	}
 
-	td->o.verify_pattern_bytes = i;
+	*pattern_bytes = i;
+	return 0;
+}
+
+static int str_buffer_pattern_cb(void *data, const char *input)
+{
+	struct thread_data *td = data;
+	int ret;
+
+	ret = pattern_cb(td->o.buffer_pattern, MAX_PATTERN_SIZE, input,
+				&td->o.buffer_pattern_bytes);
+
+	if (!ret) {
+		td->o.refill_buffers = 0;
+		td->o.scramble_buffers = 0;
+		td->o.zero_buffers = 0;
+	}
+
+	return ret;
+}
+
+static int str_verify_pattern_cb(void *data, const char *input)
+{
+	struct thread_data *td = data;
+	int ret;
+
+	ret = pattern_cb(td->o.verify_pattern, MAX_PATTERN_SIZE, input,
+				&td->o.verify_pattern_bytes);
 
 	/*
 	 * VERIFY_META could already be set
 	 */
-	if (td->o.verify == VERIFY_NONE)
+	if (!ret && td->o.verify == VERIFY_NONE)
 		td->o.verify = VERIFY_PATTERN;
 
-	return 0;
+	return ret;
 }
 
 static int str_gtod_reduce_cb(void *data, int *il)
@@ -1127,6 +1154,10 @@ struct opt_group *opt_group_from_mask(unsigned int *mask)
 }
 
 static struct opt_group fio_opt_cat_groups[] = {
+	{
+		.name	= "Latency profiling",
+		.mask	= FIO_OPT_G_LATPROF,
+	},
 	{
 		.name	= "Rate",
 		.mask	= FIO_OPT_G_RATE,
@@ -1719,6 +1750,16 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.group	= FIO_OPT_G_RANDOM,
 	},
 	{
+		.name	= "randseed",
+		.lname	= "The random generator seed",
+		.type	= FIO_OPT_STR_VAL,
+		.off1	= td_var_offset(rand_seed),
+		.help	= "Set the random generator seed value",
+		.parent = "rw",
+		.category = FIO_OPT_C_IO,
+		.group	= FIO_OPT_G_RANDOM,
+	},
+	{
 		.name	= "use_os_rand",
 		.lname	= "Use OS random",
 		.type	= FIO_OPT_BOOL,
@@ -2069,6 +2110,15 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.type	= FIO_OPT_STR_SET,
 		.off1	= td_var_offset(time_based),
 		.help	= "Keep running until runtime/timeout is met",
+		.category = FIO_OPT_C_GENERAL,
+		.group	= FIO_OPT_G_RUNTIME,
+	},
+	{
+		.name	= "verify_only",
+		.lname	= "Verify only",
+		.type	= FIO_OPT_STR_SET,
+		.off1	= td_var_offset(verify_only),
+		.help	= "Verifies previously written data is still valid",
 		.category = FIO_OPT_C_GENERAL,
 		.group	= FIO_OPT_G_RUNTIME,
 	},
@@ -2719,7 +2769,38 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.off1	= td_var_offset(max_latency),
 		.help	= "Maximum tolerated IO latency (usec)",
 		.category = FIO_OPT_C_IO,
-		.group = FIO_OPT_G_RATE,
+		.group = FIO_OPT_G_LATPROF,
+	},
+	{
+		.name	= "latency_target",
+		.lname	= "Latency Target (usec)",
+		.type	= FIO_OPT_STR_VAL_TIME,
+		.off1	= td_var_offset(latency_target),
+		.help	= "Ramp to max queue depth supporting this latency",
+		.category = FIO_OPT_C_IO,
+		.group	= FIO_OPT_G_LATPROF,
+	},
+	{
+		.name	= "latency_window",
+		.lname	= "Latency Window (usec)",
+		.type	= FIO_OPT_STR_VAL_TIME,
+		.off1	= td_var_offset(latency_window),
+		.help	= "Time to sustain latency_target",
+		.category = FIO_OPT_C_IO,
+		.group	= FIO_OPT_G_LATPROF,
+	},
+	{
+		.name	= "latency_percentile",
+		.lname	= "Latency Percentile",
+		.type	= FIO_OPT_FLOAT_LIST,
+		.off1	= td_var_offset(latency_percentile),
+		.help	= "Percentile of IOs must be below latency_target",
+		.def	= "100",
+		.maxlen	= 1,
+		.minfp	= 0.0,
+		.maxfp	= 100.0,
+		.category = FIO_OPT_C_IO,
+		.group	= FIO_OPT_G_LATPROF,
 	},
 	{
 		.name   = "shed_latency",
@@ -3006,6 +3087,15 @@ struct fio_option fio_options[FIO_MAX_OPTS] = {
 		.off1	= td_var_offset(scramble_buffers),
 		.help	= "Slightly scramble buffers on every IO submit",
 		.def	= "1",
+		.category = FIO_OPT_C_IO,
+		.group	= FIO_OPT_G_IO_BUF,
+	},
+	{
+		.name	= "buffer_pattern",
+		.lname	= "Buffer pattern",
+		.type	= FIO_OPT_STR,
+		.cb	= str_buffer_pattern_cb,
+		.help	= "Fill pattern for IO buffers",
 		.category = FIO_OPT_C_IO,
 		.group	= FIO_OPT_G_IO_BUF,
 	},

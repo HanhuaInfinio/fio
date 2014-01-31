@@ -288,6 +288,11 @@ set, the fio will sum the results and report them as "mixed" instead.
 Seed the random number generator in a predictable way so results are repeatable
 across runs.  Default: true.
 .TP
+.BI randseed \fR=\fPint
+Seed the random number generators based on this seed value, to be able to
+control what sequence of output is being generated. If not set, the random
+sequence depends on the \fBrandrepeat\fR setting.
+.TP
 .BI use_os_rand \fR=\fPbool
 Fio can either use the random generator supplied by the OS to generator random
 offsets, or it can use it's own internal generator (based on Tausworthe).
@@ -436,6 +441,12 @@ big the ranges of random data and zeroed data is. Without this set, fio will
 provide \fBbuffer_compress_percentage\fR of blocksize random data, followed by
 the remaining zeroed. With this set to some chunk size smaller than the block
 size, fio can alternate random and zeroed data throughout the IO buffer.
+.TP
+.BI buffer_pattern \fR=\fPstr
+If set, fio will fill the io buffers with this pattern. If not set, the contents
+of io buffers is defined by the other options related to buffer contents. The
+setting can be any pattern of bytes, and can be prefixed with 0x for hex
+values.
 .TP
 .BI nrfiles \fR=\fPint
 Number of files to use for this job.  Default: 1.
@@ -780,6 +791,23 @@ is used for read vs write separation.
 Average bandwidth for \fBrate\fR and \fBratemin\fR over this number of
 milliseconds.  Default: 1000ms.
 .TP
+.BI latency_target \fR=\fPint
+If set, fio will attempt to find the max performance point that the given
+workload will run at while maintaining a latency below this target. The
+values is given in microseconds. See \fBlatency_window\fR and
+\fBlatency_percentile\fR.
+.TP
+.BI latency_window \fR=\fPint
+Used with \fBlatency_target\fR to specify the sample window that the job
+is run at varying queue depths to test the performance. The value is given
+in microseconds.
+.TP
+.BI latency_percentile \fR=\fPfloat
+The percentage of IOs that must fall within the criteria specified by
+\fBlatency_target\fR and \fBlatency_window\fR. If not set, this defaults
+to 100.0, meaning that all IOs must be equal or below to the value set
+by \fBlatency_target\fR.
+.TP
 .BI max_latency \fR=\fPint
 If set, fio will exit the job if it exceeds this maximum latency. It will exit
 with an ETIME error.
@@ -932,6 +960,13 @@ Unlink job files when done.  Default: false.
 .BI loops \fR=\fPint
 Specifies the number of iterations (runs of the same workload) of this job.
 Default: 1.
+.TP
+.BI verify_only \fR=\fPbool
+Do not perform the specified workload, only verify data still matches previous
+invocation of this workload. This option allows one to check data multiple
+times at a later date without overwriting it. This option makes sense only for
+workloads that write data, and does not support workloads with the
+\fBtime_based\fR option set.
 .TP
 .BI do_verify \fR=\fPbool
 Run the verify phase after a write phase.  Only valid if \fBverify\fR is set.
@@ -1332,8 +1367,14 @@ The network protocol to use. Accepted values are:
 .B tcp
 Transmission control protocol
 .TP
+.B tcpv6
+Transmission control protocol V6
+.TP
 .B udp
 User datagram protocol
+.TP
+.B udpv6
+User datagram protocol V6
 .TP
 .B unix
 UNIX domain socket

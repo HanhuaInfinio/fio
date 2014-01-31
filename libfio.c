@@ -52,8 +52,10 @@ static const char *fio_os_strings[os_nr] = {
 	"HP-UX",
 	"OSX",
 	"NetBSD",
+	"OpenBSD",
 	"Solaris",
-	"Windows"
+	"Windows",
+	"Android",
 };
 
 static const char *fio_arch_strings[arch_nr] = {
@@ -83,7 +85,6 @@ static void reset_io_counters(struct thread_data *td)
 		td->this_io_blocks[ddir] = 0;
 		td->rate_bytes[ddir] = 0;
 		td->rate_blocks[ddir] = 0;
-		td->io_issues[ddir] = 0;
 	}
 	td->zone_bytes = 0;
 
@@ -133,6 +134,8 @@ void reset_all_stats(struct thread_data *td)
 	fio_gettime(&tv, NULL);
 	memcpy(&td->epoch, &tv, sizeof(tv));
 	memcpy(&td->start, &tv, sizeof(tv));
+
+	lat_target_init(td);
 }
 
 void reset_fio_state(void)

@@ -118,6 +118,7 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->verify_offset = le32_to_cpu(top->verify_offset);
 
 	memcpy(o->verify_pattern, top->verify_pattern, MAX_PATTERN_SIZE);
+	memcpy(o->buffer_pattern, top->buffer_pattern, MAX_PATTERN_SIZE);
 
 	o->verify_pattern_bytes = le32_to_cpu(top->verify_pattern_bytes);
 	o->verify_fatal = le32_to_cpu(top->verify_fatal);
@@ -129,6 +130,7 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->do_disk_util = le32_to_cpu(top->do_disk_util);
 	o->override_sync = le32_to_cpu(top->override_sync);
 	o->rand_repeatable = le32_to_cpu(top->rand_repeatable);
+	o->rand_seed = le64_to_cpu(top->rand_seed);
 	o->use_os_rand = le32_to_cpu(top->use_os_rand);
 	o->log_avg_msec = le32_to_cpu(top->log_avg_msec);
 	o->norandommap = le32_to_cpu(top->norandommap);
@@ -184,6 +186,7 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->zero_buffers = le32_to_cpu(top->zero_buffers);
 	o->refill_buffers = le32_to_cpu(top->refill_buffers);
 	o->scramble_buffers = le32_to_cpu(top->scramble_buffers);
+	o->buffer_pattern_bytes = le32_to_cpu(top->buffer_pattern_bytes);
 	o->time_based = le32_to_cpu(top->time_based);
 	o->disable_lat = le32_to_cpu(top->disable_lat);
 	o->disable_clat = le32_to_cpu(top->disable_clat);
@@ -210,6 +213,9 @@ void convert_thread_options_to_cpu(struct thread_options *o,
 	o->flow_watermark = __le32_to_cpu(top->flow_watermark);
 	o->flow_sleep = le32_to_cpu(top->flow_sleep);
 	o->sync_file_range = le32_to_cpu(top->sync_file_range);
+	o->latency_target = le64_to_cpu(top->latency_target);
+	o->latency_window = le64_to_cpu(top->latency_window);
+	o->latency_percentile.u.f = fio_uint64_to_double(le64_to_cpu(top->latency_percentile.u.i));
 	o->compress_percentage = le32_to_cpu(top->compress_percentage);
 	o->compress_chunk = le32_to_cpu(top->compress_chunk);
 
@@ -290,6 +296,7 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	top->do_disk_util = cpu_to_le32(o->do_disk_util);
 	top->override_sync = cpu_to_le32(o->override_sync);
 	top->rand_repeatable = cpu_to_le32(o->rand_repeatable);
+	top->rand_seed = __cpu_to_le64(o->rand_seed);
 	top->use_os_rand = cpu_to_le32(o->use_os_rand);
 	top->log_avg_msec = cpu_to_le32(o->log_avg_msec);
 	top->norandommap = cpu_to_le32(o->norandommap);
@@ -333,6 +340,7 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	top->zero_buffers = cpu_to_le32(o->zero_buffers);
 	top->refill_buffers = cpu_to_le32(o->refill_buffers);
 	top->scramble_buffers = cpu_to_le32(o->scramble_buffers);
+	top->buffer_pattern_bytes = cpu_to_le32(o->buffer_pattern_bytes);
 	top->time_based = cpu_to_le32(o->time_based);
 	top->disable_lat = cpu_to_le32(o->disable_lat);
 	top->disable_clat = cpu_to_le32(o->disable_clat);
@@ -359,6 +367,9 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	top->flow_watermark = __cpu_to_le32(o->flow_watermark);
 	top->flow_sleep = cpu_to_le32(o->flow_sleep);
 	top->sync_file_range = cpu_to_le32(o->sync_file_range);
+	top->latency_target = __cpu_to_le64(o->latency_target);
+	top->latency_window = __cpu_to_le64(o->latency_window);
+	top->latency_percentile.u.i = __cpu_to_le64(fio_double_to_uint64(o->latency_percentile.u.f));
 	top->compress_percentage = cpu_to_le32(o->compress_percentage);
 	top->compress_chunk = cpu_to_le32(o->compress_chunk);
 
@@ -407,6 +418,7 @@ void convert_thread_options_to_net(struct thread_options_pack *top,
 	}
 
 	memcpy(top->verify_pattern, o->verify_pattern, MAX_PATTERN_SIZE);
+	memcpy(top->buffer_pattern, o->buffer_pattern, MAX_PATTERN_SIZE);
 
 	top->size = __cpu_to_le64(o->size);
 	top->verify_backlog = __cpu_to_le64(o->verify_backlog);

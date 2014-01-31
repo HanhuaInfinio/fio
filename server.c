@@ -840,7 +840,8 @@ static int handle_connection(int sk)
 static int accept_loop(int listen_sk)
 {
 	struct sockaddr_in addr;
-	socklen_t len = sizeof(addr);
+	struct sockaddr_in6 addr6;
+	socklen_t len = use_ipv6 ? sizeof(addr6) : sizeof(addr);
 	struct pollfd pfd;
 	int ret = 0, sk, flags, exitval = 0;
 	FLIST_HEAD(conn_list);
@@ -852,6 +853,8 @@ static int accept_loop(int listen_sk)
 	fcntl(listen_sk, F_SETFL, flags);
 
 	while (!exit_backend) {
+		const char *from;
+		char buf[64];
 		pid_t pid;
 
 		pfd.fd = listen_sk;
@@ -882,13 +885,22 @@ static int accept_loop(int listen_sk)
 		if (exit_backend || ret < 0)
 			break;
 
-		sk = accept(listen_sk, (struct sockaddr *) &addr, &len);
+		if (use_ipv6)
+			sk = accept(listen_sk, (struct sockaddr *) &addr6, &len);
+		else
+			sk = accept(listen_sk, (struct sockaddr *) &addr, &len);
+
 		if (sk < 0) {
 			log_err("fio: accept: %s\n", strerror(errno));
 			return -1;
 		}
 
-		dprint(FD_NET, "server: connect from %s\n", inet_ntoa(addr.sin_addr));
+		if (use_ipv6)
+			from = inet_ntop(AF_INET6, (struct sockaddr *) &addr6.sin6_addr, buf, sizeof(buf));
+		else
+			from = inet_ntop(AF_INET, (struct sockaddr *) &addr.sin_addr, buf, sizeof(buf));
+
+		dprint(FD_NET, "server: connect from %s\n", from);
 
 		pid = fork();
 		if (pid) {
@@ -1041,6 +1053,11 @@ void fio_server_send_ts(struct thread_stat *ts, struct group_run_stats *rs)
 	p.ts.first_error	= cpu_to_le32(ts->first_error);
 	p.ts.kb_base		= cpu_to_le32(ts->kb_base);
 	p.ts.unit_base		= cpu_to_le32(ts->unit_base);
+
+	p.ts.latency_depth	= cpu_to_le32(ts->latency_depth);
+	p.ts.latency_target	= cpu_to_le64(ts->latency_target);
+	p.ts.latency_window	= cpu_to_le64(ts->latency_window);
+	p.ts.latency_percentile.u.i = __cpu_to_le64(fio_double_to_uint64(ts->latency_percentile.u.f));
 
 	convert_gs(&p.rs, rs);
 
@@ -1375,41 +1392,38 @@ static int fio_init_server_connection(void)
 	return sk;
 }
 
-int fio_server_parse_host(const char *host, int *ipv6, struct in_addr *inp,
+int fio_server_parse_host(const char *host, int ipv6, struct in_addr *inp,
 			  struct in6_addr *inp6)
 
 {
 	int ret = 0;
 
-	if (*ipv6)
+	if (ipv6)
 		ret = inet_pton(AF_INET6, host, inp6);
 	else
 		ret = inet_pton(AF_INET, host, inp);
 
 	if (ret != 1) {
-		struct hostent *hent;
+		struct addrinfo hints, *res;
 
-		hent = gethostbyname(host);
-		if (!hent) {
-			log_err("fio: failed to resolve <%s>\n", host);
-			return 0;
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = ipv6 ? AF_INET6 : AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+
+		ret = getaddrinfo(host, NULL, &hints, &res);
+		if (ret) {
+			log_err("fio: failed to resolve <%s> (%s)\n", host,
+					gai_strerror(ret));
+			return 1;
 		}
 
-		if (*ipv6) {
-			if (hent->h_addrtype != AF_INET6) {
-				log_info("fio: falling back to IPv4\n");
-				*ipv6 = 0;
-			} else
-				memcpy(inp6, hent->h_addr_list[0], 16);
-		}
-		if (!*ipv6) {
-			if (hent->h_addrtype != AF_INET) {
-				log_err("fio: lookup type mismatch\n");
-				return 0;
-			}
-			memcpy(inp, hent->h_addr_list[0], 4);
-		}
+		if (ipv6)
+			memcpy(inp6, &((struct sockaddr_in6 *) res->ai_addr)->sin6_addr, sizeof(*inp6));
+		else
+			memcpy(inp, &((struct sockaddr_in *) res->ai_addr)->sin_addr, sizeof(*inp));
+
 		ret = 1;
+		freeaddrinfo(res);
 	}
 
 	return !(ret == 1);
@@ -1494,7 +1508,7 @@ int fio_server_parse_string(const char *str, char **ptr, int *is_sock,
 
 	*ptr = strdup(host);
 
-	if (fio_server_parse_host(*ptr, ipv6, inp, inp6)) {
+	if (fio_server_parse_host(*ptr, *ipv6, inp, inp6)) {
 		free(*ptr);
 		*ptr = NULL;
 		return 1;

@@ -28,52 +28,63 @@ static void populate_hdr(struct thread_data *td, struct io_u *io_u,
 			 struct verify_header *hdr, unsigned int header_num,
 			 unsigned int header_len);
 
-void fill_pattern(struct thread_data *td, void *p, unsigned int len, struct io_u *io_u, unsigned long seed, int use_seed)
+static void fill_pattern(struct thread_data *td, void *p, unsigned int len,
+			 char *pattern, unsigned int pattern_bytes)
 {
-	switch (td->o.verify_pattern_bytes) {
+	switch (pattern_bytes) {
 	case 0:
-		dprint(FD_VERIFY, "fill random bytes len=%u\n", len);
-		if (use_seed)
-			__fill_random_buf(p, len, seed);
-		else {
-			struct frand_state buf_state;
-			get_rand_buf_state(td, &buf_state);
-			io_u->rand_seed = fill_random_buf(&buf_state, p, len);
-		}
+		assert(0);
 		break;
 	case 1:
-		if (io_u->buf_filled_len >= len) {
-			dprint(FD_VERIFY, "using already filled verify pattern b=0 len=%u\n", len);
-			return;
-		}
 		dprint(FD_VERIFY, "fill verify pattern b=0 len=%u\n", len);
-		memset(p, td->o.verify_pattern[0], len);
-		io_u->buf_filled_len = len;
+		memset(p, pattern[0], len);
 		break;
 	default: {
 		unsigned int i = 0, size = 0;
 		unsigned char *b = p;
 
-		if (io_u->buf_filled_len >= len) {
-			dprint(FD_VERIFY, "using already filled verify pattern b=%d len=%u\n",
-					td->o.verify_pattern_bytes, len);
-			return;
-		}
-
 		dprint(FD_VERIFY, "fill verify pattern b=%d len=%u\n",
-					td->o.verify_pattern_bytes, len);
+					pattern_bytes, len);
 
 		while (i < len) {
-			size = td->o.verify_pattern_bytes;
+			size = pattern_bytes;
 			if (size > (len - i))
 				size = len - i;
-			memcpy(b+i, td->o.verify_pattern, size);
+			memcpy(b+i, pattern, size);
 			i += size;
 		}
-		io_u->buf_filled_len = len;
 		break;
 		}
 	}
+}
+
+void fill_buffer_pattern(struct thread_data *td, void *p, unsigned int len)
+{
+	fill_pattern(td, p, len, td->o.buffer_pattern, td->o.buffer_pattern_bytes);
+}
+
+void fill_verify_pattern(struct thread_data *td, void *p, unsigned int len,
+			 struct io_u *io_u, unsigned long seed, int use_seed)
+{
+	if (!td->o.verify_pattern_bytes) {
+		dprint(FD_VERIFY, "fill random bytes len=%u\n", len);
+
+		if (use_seed)
+			__fill_random_buf(p, len, seed);
+		else
+			io_u->rand_seed = fill_random_buf(&td->buf_state, p, len);
+		return;
+	}
+	
+	if (io_u->buf_filled_len >= len) {
+		dprint(FD_VERIFY, "using already filled verify pattern b=%d len=%u\n",
+			td->o.verify_pattern_bytes, len);
+		return;
+	}
+
+	fill_pattern(td, p, len, td->o.verify_pattern, td->o.verify_pattern_bytes);
+
+	io_u->buf_filled_len = len;
 }
 
 static unsigned int get_hdr_inc(struct thread_data *td, struct io_u *io_u)
@@ -94,7 +105,7 @@ static void fill_pattern_headers(struct thread_data *td, struct io_u *io_u,
 	struct verify_header *hdr;
 	void *p = io_u->buf;
 
-	fill_pattern(td, p, io_u->buflen, io_u, seed, use_seed);
+	fill_verify_pattern(td, p, io_u->buflen, io_u, seed, use_seed);
 
 	hdr_inc = get_hdr_inc(td, io_u);
 	header_num = 0;
@@ -372,6 +383,19 @@ static int verify_io_u_meta(struct verify_header *hdr, struct vcont *vc)
 	if (td->o.verify_pattern_bytes)
 		ret |= verify_io_u_pattern(hdr, vc);
 
+	/*
+	 * For read-only workloads, the program cannot be certain of the
+	 * last numberio written to a block. Checking of numberio will be done
+	 * only for workloads that write data.
+	 * For verify_only, numberio will be checked in the last iteration when
+	 * the correct state of numberio, that would have been written to each
+	 * block in a previous run of fio, has been reached.
+	 */
+	if (td_write(td) || td_rw(td))
+		if (!td->o.verify_only || td->o.loops == 0)
+			if (vh->numberio != io_u->numberio)
+				ret = EILSEQ;
+
 	if (!ret)
 		return 0;
 
@@ -647,18 +671,17 @@ static int verify_header(struct io_u *io_u, struct verify_header *hdr)
 	uint32_t crc;
 
 	if (hdr->magic != FIO_HDR_MAGIC)
-		return 0;
-	if (hdr->len > io_u->buflen) {
-		log_err("fio: verify header exceeds buffer length (%u > %lu)\n", hdr->len, io_u->buflen);
-		return 0;
-	}
+		return 1;
+	if (hdr->len > io_u->buflen)
+		return 2;
+	if (hdr->rand_seed != io_u->rand_seed)
+		return 3;
 
 	crc = fio_crc32c(p, offsetof(struct verify_header, crc32));
 	if (crc == hdr->crc32)
-		return 1;
-
+		return 0;
 	log_err("fio: verify header crc %x, calculated %x\n", hdr->crc32, crc);
-	return 0;
+	return 4;
 }
 
 int verify_io_u(struct thread_data *td, struct io_u *io_u)
@@ -695,12 +718,40 @@ int verify_io_u(struct thread_data *td, struct io_u *io_u)
 			memswp(p, p + td->o.verify_offset, header_size);
 		hdr = p;
 
-		if (!verify_header(io_u, hdr)) {
+		ret = verify_header(io_u, hdr);
+		switch (ret) {
+		case 0:
+			break;
+		case 1:
 			log_err("verify: bad magic header %x, wanted %x at "
 				"file %s offset %llu, length %u\n",
 				hdr->magic, FIO_HDR_MAGIC,
 				io_u->file->file_name,
 				io_u->offset + hdr_num * hdr->len, hdr->len);
+			return EILSEQ;
+			break;
+		case 2:
+			log_err("fio: verify header exceeds buffer length (%u "
+				"> %lu)\n", hdr->len, io_u->buflen);
+			return EILSEQ;
+			break;
+		case 3:
+			log_err("verify: bad header rand_seed %"PRIu64
+				", wanted %"PRIu64" at file %s offset %llu, "
+				"length %u\n",
+				hdr->rand_seed, io_u->rand_seed,
+				io_u->file->file_name,
+				io_u->offset + hdr_num * hdr->len, hdr->len);
+			return EILSEQ;
+			break;
+		case 4:
+			return EILSEQ;
+			break;
+		default:
+			log_err("verify: unknown header error at file %s "
+			"offset %llu, length %u\n",
+			io_u->file->file_name,
+			io_u->offset + hdr_num * hdr->len, hdr->len);
 			return EILSEQ;
 		}
 
@@ -771,7 +822,7 @@ static void fill_meta(struct verify_header *hdr, struct thread_data *td,
 	vh->time_sec = io_u->start_time.tv_sec;
 	vh->time_usec = io_u->start_time.tv_usec;
 
-	vh->numberio = td->io_issues[DDIR_WRITE];
+	vh->numberio = io_u->numberio;
 
 	vh->offset = io_u->offset + header_num * td->o.verify_interval;
 }
@@ -945,6 +996,8 @@ void populate_verify_io_u(struct thread_data *td, struct io_u *io_u)
 	if (td->o.verify == VERIFY_NULL)
 		return;
 
+	io_u->numberio = td->io_issues[io_u->ddir];
+
 	fill_pattern_headers(td, io_u, 0, 0);
 }
 
@@ -977,6 +1030,7 @@ int get_next_verify(struct thread_data *td, struct io_u *io_u)
 
 		io_u->offset = ipo->offset;
 		io_u->buflen = ipo->len;
+		io_u->numberio = ipo->numberio;
 		io_u->file = ipo->file;
 		io_u->flags |= IO_U_F_VER_LIST;
 

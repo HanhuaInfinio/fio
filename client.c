@@ -238,7 +238,7 @@ struct fio_client *fio_client_add_explicit(struct client_ops *ops,
 		int ipv6;
 
 		ipv6 = type == Fio_client_ipv6;
-		if (fio_server_parse_host(hostname, &ipv6,
+		if (fio_server_parse_host(hostname, ipv6,
 						&client->addr.sin_addr,
 						&client->addr6.sin6_addr))
 			goto err;
@@ -796,6 +796,11 @@ static void convert_ts(struct thread_stat *dst, struct thread_stat *src)
 	dst->first_error	= le32_to_cpu(src->first_error);
 	dst->kb_base		= le32_to_cpu(src->kb_base);
 	dst->unit_base		= le32_to_cpu(src->unit_base);
+
+	dst->latency_depth	= le32_to_cpu(src->latency_depth);
+	dst->latency_target	= le64_to_cpu(src->latency_target);
+	dst->latency_window	= le64_to_cpu(src->latency_window);
+	dst->latency_percentile.u.f = fio_uint64_to_double(le64_to_cpu(src->latency_percentile.u.i));
 }
 
 static void convert_gs(struct group_run_stats *dst, struct group_run_stats *src)

@@ -649,6 +649,8 @@ static uint64_t do_io(struct thread_data *td)
 	else
 		td_set_runstate(td, TD_RUNNING);
 
+	lat_target_init(td);
+
 	while ((td->o.read_iolog_file && !flist_empty(&td->io_log_list)) ||
 		(!flist_empty(&td->trim_list)) || !io_bytes_exceeded(td) ||
 		td->o.time_based) {
@@ -680,8 +682,11 @@ static uint64_t do_io(struct thread_data *td)
 			break;
 
 		io_u = get_io_u(td);
-		if (!io_u)
+		if (!io_u) {
+			if (td->o.latency_target)
+				goto reap;
 			break;
+		}
 
 		ddir = io_u->ddir;
 
@@ -776,6 +781,7 @@ sync_done:
 		 * can get BUSY even without IO queued, if the system is
 		 * resource starved.
 		 */
+reap:
 		full = queue_full(td) || (ret == FIO_Q_BUSY && td->cur_depth);
 		if (full || !td->o.iodepth_batch_complete) {
 			min_evts = min(td->o.iodepth_batch_complete,
@@ -812,6 +818,8 @@ sync_done:
 				break;
 			}
 		}
+		if (!in_ramp_time(td) && td->o.latency_target)
+			lat_target_check(td);
 
 		if (td->o.thinktime) {
 			unsigned long long b;
@@ -981,7 +989,7 @@ static int init_io_u(struct thread_data *td)
 				 * Fill the buffer with the pattern if we are
 				 * going to be doing writes.
 				 */
-				fill_pattern(td, io_u->buf, max_bs, io_u, 0, 0);
+				fill_verify_pattern(td, io_u->buf, max_bs, io_u, 0, 0);
 			}
 		}
 
@@ -1109,6 +1117,44 @@ static int exec_string(struct thread_options *o, const char *string, const char 
 
 	free(str);
 	return ret;
+}
+
+/*
+ * Dry run to compute correct state of numberio for verification.
+ */
+static uint64_t do_dry_run(struct thread_data *td)
+{
+	uint64_t bytes_done[DDIR_RWDIR_CNT] = { 0, 0, 0 };
+
+	td_set_runstate(td, TD_RUNNING);
+
+	while ((td->o.read_iolog_file && !flist_empty(&td->io_log_list)) ||
+		(!flist_empty(&td->trim_list)) || !io_bytes_exceeded(td)) {
+		struct io_u *io_u;
+		int ret;
+
+		if (td->terminate || td->done)
+			break;
+
+		io_u = get_io_u(td);
+		if (!io_u)
+			break;
+
+		io_u->flags |= IO_U_F_FLIGHT;
+		io_u->error = 0;
+		io_u->resid = 0;
+		if (ddir_rw(acct_ddir(io_u)))
+			td->io_issues[acct_ddir(io_u)]++;
+		if (ddir_rw(io_u->ddir)) {
+			io_u_mark_depth(td, 1);
+			td->ts.total_io_u[io_u->ddir]++;
+		}
+
+		ret = io_u_sync_complete(td, io_u, bytes_done);
+		(void) ret;
+	}
+
+	return bytes_done[DDIR_WRITE] + bytes_done[DDIR_TRIM];
 }
 
 /*
@@ -1324,7 +1370,10 @@ static void *thread_main(void *data)
 
 		prune_io_piece_log(td);
 
-		verify_bytes = do_io(td);
+		if (td->o.verify_only && (td_write(td) || td_rw(td)))
+			verify_bytes = do_dry_run(td);
+		else
+			verify_bytes = do_io(td);
 
 		clear_state = 1;
 

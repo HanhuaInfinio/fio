@@ -244,6 +244,7 @@ CYGWIN*)
   output_sym "CONFIG_SCHED_IDLE"
   output_sym "CONFIG_TCP_NODELAY"
   output_sym "CONFIG_TLS_THREAD"
+  output_sym "CONFIG_IPV6"
   echo "CC=$CC" >> $config_host_mak
   echo "BUILD_CFLAGS=$CFLAGS -include config-host.h -D_GNU_SOURCE" >> $config_host_mak
   exit 0
@@ -571,6 +572,7 @@ echo "rdmacm                        $rdmacm"
 linux_fallocate="no"
 cat > $TMPC << EOF
 #include <stdio.h>
+#include <fcntl.h>
 #include <linux/falloc.h>
 int main(int argc, char **argv)
 {
@@ -887,8 +889,7 @@ cat > $TMPC << EOF
 #include <string.h>
 int main(int argc, char **argv)
 {
-  strcasestr(NULL, NULL);
-  return 0;
+  return strcasestr(argv[0], argv[1]) != NULL;
 }
 EOF
 if compile_prog "" "" "strcasestr"; then
@@ -902,6 +903,7 @@ getopt_long_only="no"
 cat > $TMPC << EOF
 #include <unistd.h>
 #include <stdio.h>
+#include <getopt.h>
 int main(int argc, char **argv)
 {
   int c = getopt_long_only(argc, argv, NULL, NULL, NULL);
@@ -952,7 +954,7 @@ echo "socklen_t                     $socklen_t"
 tls_thread="no"
 cat > $TMPC << EOF
 #include <stdio.h>
-static int __thread ret;
+static __thread int ret;
 int main(int argc, char **argv)
 {
   return ret;
@@ -1090,6 +1092,31 @@ if compile_prog "" "" "pwritev"; then
 fi
 echo "pwritev/preadv                $pwritev"
 
+##########################################
+# Check whether we have the required functions for ipv6
+ipv6="no"
+cat > $TMPC << EOF
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <stdio.h>
+int main(int argc, char **argv)
+{
+  struct addrinfo hints;
+  struct in6_addr addr;
+  int ret;
+
+  ret = getaddrinfo(NULL, NULL, &hints, NULL);
+  freeaddrinfo(NULL);
+  printf("%s\n", gai_strerror(ret));
+  addr = in6addr_any;
+  return 0;
+}
+EOF
+if compile_prog "" "" "ipv6"; then
+  ipv6="yes"
+fi
+echo "IPv6 helpers                  $ipv6"
 
 #############################################################################
 
@@ -1208,6 +1235,9 @@ if test "$rlimit_memlock" = "yes" ; then
 fi
 if test "$pwritev" = "yes" ; then
   output_sym "CONFIG_PWRITEV"
+fi
+if test "$ipv6" = "yes" ; then
+  output_sym "CONFIG_IPV6"
 fi
 
 echo "LIBS+=$LIBS" >> $config_host_mak
